@@ -1,0 +1,25 @@
+[project]
+name = "shapley"
+version = "0.1.0"
+description = "FlexOlmo loading and perplexity with optional expert disabling"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch==2.6.0+cu124",
+    "transformers>=4.57.0",
+    "accelerate",
+    "datasets",
+    "tqdm",
+]
+
+[dependency-groups]
+dev = []
+
+# FlexOlmo needs torch 2.6.0+cu124 from PyTorch's CUDA index
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu124" }
