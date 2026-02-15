@@ -266,8 +266,13 @@ def compute_shapley_values(
         for S in itertools.combinations(range(n), r):
             S_set = frozenset(S)
             coalitions.append((S_set, (N - S_set) or None))
+    empty_set = frozenset()
     for S_set, disabled in tqdm(coalitions, desc="Coalitions", unit="coal"):
-        v_cache[S_set] = value_fn(disabled)
+        if S_set == empty_set:
+            # v(∅)=0 by convention; all experts disabled would give NaN (softmax(-inf,...,-inf))
+            v_cache[S_set] = 0.0
+        else:
+            v_cache[S_set] = value_fn(disabled)
 
     # Shapley value φ_i = sum over S ⊆ N\{i} of [ |S|!(n-1-|S|)!/n! * (v(S∪{i}) - v(S)) ]
     fact = math.factorial
@@ -337,25 +342,28 @@ def compute_shapley_values_mc(
                 S = S | {perm[j]}
         # Evaluate v for each set in the chain (use cache so repeated S across perms are free)
         vals = []
+        empty_set = frozenset()
         for S_set in chain:
             if S_set not in v_cache:
-                disabled = (N - S_set) or None
-                v_cache[S_set] = value_fn(disabled)
+                if S_set == empty_set:
+                    # v(∅)=0 by convention; all experts disabled would give NaN (softmax(-inf,...,-inf))
+                    v_cache[S_set] = 0.0
+                else:
+                    disabled = (N - S_set) or None
+                    v_cache[S_set] = value_fn(disabled)
             vals.append(v_cache[S_set])
-        # After first perm, sanity-check: v(∅) and v(N) should differ if router patch works
+        # After first perm, sanity-check: v(N) should be non-zero if router patch works (v(∅) is fixed to 0)
         if len(v_cache) >= 2 and perm is permutations[0]:
-            v_empty = v_cache.get(frozenset())
             v_full = v_cache.get(frozenset(N))
-            if v_empty is not None and v_full is not None:
-                if abs(v_full - v_empty) < 1e-9:
-                    import warnings
-                    warnings.warn(
-                        f"v(∅) ≈ v(N) ({v_empty:.4f} ≈ {v_full:.4f}). "
-                        "Router masking may not be applied—Shapley values will be zero. "
-                        "Try: python flexolmo_ppl.py --text 'x' --disable-experts 0,1,2,3,4,5,6 vs no --disable-experts to check PPL change.",
-                        UserWarning,
-                        stacklevel=2,
-                    )
+            if v_full is not None and abs(v_full) < 1e-9:
+                import warnings
+                warnings.warn(
+                    f"v(N) ≈ 0 ({v_full:.4f}). "
+                    "Router masking may not be applied—Shapley values may be wrong. "
+                    "Try: python flexolmo_ppl.py --text 'x' --disable-experts 0,1,2,3,4,5,6 vs no --disable-experts to check PPL change.",
+                    UserWarning,
+                    stacklevel=2,
+                )
         for j in range(n):
             marginal = vals[j + 1] - vals[j]
             phi[perm[j]] += marginal
